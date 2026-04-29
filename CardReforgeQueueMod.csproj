@@ -1,0 +1,35 @@
+<Project Sdk="Godot.NET.Sdk/4.5.1">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>CardReforgeQueueMod</RootNamespace>
+    <AssemblyName>CardReforgeQueueMod</AssemblyName>
+    <ModsFolder Condition=" '$(ModsFolder)' == '' ">D:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\CardReforgeQueueMod</ModsFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" />
+    <Reference Include="sts2">
+      <HintPath>References\sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CopyToModsFolder" AfterTargets="Build" Condition="'$(SkipModDeployment)' != 'true'">
+    <PropertyGroup>
+      <SourceManifest>$(MSBuildProjectDirectory)\mod_manifest.json</SourceManifest>
+    </PropertyGroup>
+
+    <Message Text="Cleaning CardReforgeQueueMod mods folder..." Importance="high" />
+    <RemoveDir Directories="$(ModsFolder)" Condition="Exists('$(ModsFolder)')" />
+    <MakeDir Directories="$(ModsFolder)" />
+    <Message Text="Copying CardReforgeQueueMod to STS2 mods folder..." Importance="high" />
+    <Copy SourceFiles="$(OutputPath)CardReforgeQueueMod.dll" DestinationFolder="$(ModsFolder)" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="$(SourceManifest)" DestinationFolder="$(ModsFolder)" SkipUnchangedFiles="false" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\Source\icon.png" DestinationFolder="$(ModsFolder)\Source" SkipUnchangedFiles="false" />
+    <Message Text="Successfully copied CardReforgeQueueMod to $(ModsFolder)" Importance="high" />
+  </Target>
+</Project>

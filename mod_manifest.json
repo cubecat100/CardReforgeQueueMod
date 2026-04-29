@@ -1,0 +1,11 @@
+{
+  "id": "CardReforgeQueueMod",
+  "name": "CardReforgeQueueMod",
+  "author": "CubeCat",
+  "description": "Card reforge queue mod for Slay the Spire 2.",
+  "version": "0.1.0",
+  "has_pck": false,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": false
+}
