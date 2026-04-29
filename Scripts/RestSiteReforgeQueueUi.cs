@@ -80,7 +80,7 @@ public static class RestSiteReforgeQueueUi
             ZIndex = 0,
         };
 
-        panel.Position = new Vector2(0.0f, smithButton.Size.Y + 32.0f);
+        panel.Position = new Vector2(0.0f, smithButton.Size.Y + 48.0f);
         panel.AddThemeStyleboxOverride("panel", RestSiteReforgeQueueConfirmUi.CreatePanelStyle());
 
         var root = new VBoxContainer
