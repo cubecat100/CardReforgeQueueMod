@@ -1,18 +1,15 @@
 #nullable enable
 using Godot;
 using HarmonyLib;
-using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Hooks;
 using MegaCrit.Sts2.Core.Models;
-using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading.Tasks;
 
 namespace CardReforgeQueueMod;
 
@@ -20,8 +17,8 @@ public static class RestSiteReforgeQueueUi
 {
     private const string ConfirmUiName = "CardReforgeQueueRestSiteConfirm";
     private static readonly MethodInfo OwnerGetter = AccessTools.PropertyGetter(typeof(RestSiteOption), "Owner");
-    private static readonly FieldInfo SmithSelectionField = AccessTools.Field(typeof(SmithRestSiteOption), "_selection");
     private static readonly List<RestSiteReforgeQueueConfirmUi> ActiveConfirmUis = new();
+    private static readonly Dictionary<string, string> PendingAutoSelections = new();
 
     public static void EnsureInstalled(NRestSiteRoom room)
     {
@@ -155,27 +152,24 @@ public static class RestSiteReforgeQueueUi
             .Select(static group => new QueuedCardPreview(group.Key, group.First().Title, group.Count()));
     }
 
-    public static bool TryCreateAutoUpgradeTask(SmithRestSiteOption smithOption, out Task<bool> task)
+    public static void PrepareAutoUpgradeSelection(SmithRestSiteOption smithOption)
     {
-        task = Task.FromResult(false);
         if (IsAutoUpgradeEnabled(smithOption) == false)
         {
-            return false;
+            return;
         }
 
-        if (TryGetTopQueuedCard(smithOption, out var card, out var queuePath, out var cardKey) == false)
+        if (TryGetTopQueuedCard(smithOption, out _, out var queuePath, out var cardKey) == false)
         {
-            return false;
+            return;
         }
 
-        if (GetOwner(smithOption) is not { } player)
+        if (string.IsNullOrEmpty(queuePath) == true)
         {
-            return false;
+            return;
         }
 
-        SmithSelectionField.SetValue(smithOption, new[] { card });
-        task = AutoUpgradeQueuedCard(player, card, queuePath, cardKey);
-        return true;
+        PendingAutoSelections[queuePath] = cardKey;
     }
 
     private static bool IsAutoUpgradeEnabled(SmithRestSiteOption smithOption)
@@ -227,16 +221,68 @@ public static class RestSiteReforgeQueueUi
         return false;
     }
 
-    private static async Task<bool> AutoUpgradeQueuedCard(Player player, CardModel card, string? queuePath, string cardKey)
+    public static void TryInstallAutoSelector(NDeckUpgradeSelectScreen screen, IReadOnlyList<CardModel> cards)
     {
-        CardCmd.Upgrade(card, CardPreviewStyle.None);
-        await Hook.AfterRestSiteSmith(player.RunState, player);
-        return true;
+        var player = cards.FirstOrDefault()?.Owner;
+        var queuePath = TopBarReforgeQueueUi.GetQueuePath(player);
+        if (string.IsNullOrEmpty(queuePath) == true)
+        {
+            return;
+        }
+
+        if (PendingAutoSelections.Remove(queuePath, out var cardKey) == false)
+        {
+            return;
+        }
+
+        var card = cards.FirstOrDefault(item =>
+            ReforgeQueueCardRow.MatchesCardKey(item, cardKey)
+            && item.IsUpgradable == true
+            && item.IsUpgraded == false);
+        if (card == null)
+        {
+            return;
+        }
+
+        screen.AddChild(new RestSiteAutoUpgradeSelector(screen, card));
     }
 
     private static Player? GetOwner(SmithRestSiteOption smithOption)
     {
         return OwnerGetter.Invoke(smithOption, null) as Player;
+    }
+}
+
+public sealed partial class RestSiteAutoUpgradeSelector : Node
+{
+    private static readonly MethodInfo OnCardClickedMethod = AccessTools.Method(
+        typeof(NDeckUpgradeSelectScreen),
+        "OnCardClicked");
+    private static readonly MethodInfo ConfirmSelectionMethod = AccessTools.Method(
+        typeof(NDeckUpgradeSelectScreen),
+        "ConfirmSelection");
+    private readonly NDeckUpgradeSelectScreen screen;
+    private readonly CardModel card;
+    private int framesToWait = 1;
+
+    public RestSiteAutoUpgradeSelector(NDeckUpgradeSelectScreen screen, CardModel card)
+    {
+        this.screen = screen;
+        this.card = card;
+        ProcessMode = ProcessModeEnum.Always;
+    }
+
+    public override void _Process(double delta)
+    {
+        if (framesToWait > 0)
+        {
+            framesToWait -= 1;
+            return;
+        }
+
+        OnCardClickedMethod.Invoke(screen, new object[] { card });
+        ConfirmSelectionMethod.Invoke(screen, new object?[] { null });
+        QueueFree();
     }
 }
 

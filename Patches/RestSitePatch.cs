@@ -5,7 +5,8 @@ using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
-using System.Threading.Tasks;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using System.Collections.Generic;
 
 namespace CardReforgeQueueMod.Patches;
 
@@ -21,15 +22,18 @@ public static class RestSitePatch
 [HarmonyPatch(typeof(SmithRestSiteOption), "OnSelect")]
 public static class SmithRestSiteOptionPatch
 {
-    public static bool Prefix(SmithRestSiteOption __instance, ref Task<bool> __result)
+    public static void Prefix(SmithRestSiteOption __instance)
     {
-        if (RestSiteReforgeQueueUi.TryCreateAutoUpgradeTask(__instance, out var task) == false)
-        {
-            return true;
-        }
+        RestSiteReforgeQueueUi.PrepareAutoUpgradeSelection(__instance);
+    }
+}
 
-        __result = task;
-        return false;
+[HarmonyPatch(typeof(NDeckUpgradeSelectScreen), "ShowScreen")]
+public static class DeckUpgradeSelectScreenPatch
+{
+    public static void Postfix(NDeckUpgradeSelectScreen __result, IReadOnlyList<CardModel> cards)
+    {
+        RestSiteReforgeQueueUi.TryInstallAutoSelector(__result, cards);
     }
 }
 
