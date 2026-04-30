@@ -156,6 +156,9 @@ public static class TopBarReforgeQueueUi
         popup.Position = new Vector2(-590.0f, 72.0f);
         popup.AddThemeStyleboxOverride("panel", CreatePopupStyle());
 
+        var player = GetPlayer(topBar);
+        var queuePath = GetQueuePath(player);
+
         var root = new VBoxContainer
         {
             CustomMinimumSize = new Vector2(560.0f, 440.0f),
@@ -177,6 +180,18 @@ public static class TopBarReforgeQueueUi
         title.AddThemeFontSizeOverride("font_size", 12);
         header.AddChild(title);
 
+        var autoUpgradeCheckbox = new CheckBox
+        {
+            Text = "Auto upgrade",
+            ButtonPressed = ReforgeQueueStorage.LoadAutoUpgradeEnabled(queuePath),
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            CustomMinimumSize = new Vector2(130.0f, 30.0f),
+        };
+        autoUpgradeCheckbox.AddThemeFontSizeOverride("font_size", 11);
+        autoUpgradeCheckbox.Pressed += () =>
+            ReforgeQueueStorage.SaveAutoUpgradeEnabled(queuePath, autoUpgradeCheckbox.ButtonPressed);
+        header.AddChild(autoUpgradeCheckbox);
+
         var closeButton = new Button
         {
             Text = "X",
@@ -192,9 +207,6 @@ public static class TopBarReforgeQueueUi
         };
         body.AddThemeConstantOverride("separation", 8);
         root.AddChild(body);
-
-        var player = GetPlayer(topBar);
-        var queuePath = GetQueuePath(player);
 
         var queueList = new ReforgeQueueDropList("Queue", isQueueList: true, queuePath)
         {
@@ -352,6 +364,35 @@ public static class ReforgeQueueStorage
         Save(queuePath, keys);
     }
 
+    public static bool LoadAutoUpgradeEnabled(string? queuePath)
+    {
+        var settingsPath = GetAutoUpgradeSettingsPath(queuePath);
+        if (string.IsNullOrEmpty(settingsPath) == true || File.Exists(settingsPath) == false)
+        {
+            return true;
+        }
+
+        var value = File.ReadAllText(settingsPath).Trim();
+        return string.Equals(value, "false", StringComparison.OrdinalIgnoreCase) == false;
+    }
+
+    public static void SaveAutoUpgradeEnabled(string? queuePath, bool enabled)
+    {
+        var settingsPath = GetAutoUpgradeSettingsPath(queuePath);
+        if (string.IsNullOrEmpty(settingsPath) == true)
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(settingsPath);
+        if (string.IsNullOrEmpty(directory) == false)
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(settingsPath, enabled ? "true" : "false");
+    }
+
     public static IEnumerable<string> LoadKeys(string? queuePath)
     {
         if (string.IsNullOrEmpty(queuePath) == true || File.Exists(queuePath) == false)
@@ -363,6 +404,13 @@ public static class ReforgeQueueStorage
             .Where(static line => string.IsNullOrWhiteSpace(line) == false)
             .Select(static line => line.Trim())
             .ToArray();
+    }
+
+    private static string? GetAutoUpgradeSettingsPath(string? queuePath)
+    {
+        return string.IsNullOrEmpty(queuePath) == true
+            ? null
+            : $"{queuePath}.auto";
     }
 }
 
@@ -665,6 +713,11 @@ public sealed partial class ReforgeQueueCardRow : PanelContainer
     public ReforgeQueueCardRow(IEnumerable<CardModel> cards)
     {
         this.cards = cards.ToList();
+        if (this.cards.Count == 0)
+        {
+            throw new ArgumentException("Card row requires at least one card.", nameof(cards));
+        }
+
         var card = this.cards[0];
         CardKey = GetCardKey(card);
         Name = $"CardReforgeQueueRow_{CardKey}";

@@ -18,7 +18,6 @@ public static class RestSiteReforgeQueueUi
     private const string ConfirmUiName = "CardReforgeQueueRestSiteConfirm";
     private static readonly MethodInfo OwnerGetter = AccessTools.PropertyGetter(typeof(RestSiteOption), "Owner");
     private static readonly List<RestSiteReforgeQueueConfirmUi> ActiveConfirmUis = new();
-    private static readonly Dictionary<string, string> PendingAutoSelections = new();
 
     public static void EnsureInstalled(NRestSiteRoom room)
     {
@@ -87,17 +86,7 @@ public static class RestSiteReforgeQueueUi
         root.AddThemeConstantOverride("separation", 4);
         panel.AddChild(root);
 
-        var checkbox = new CheckBox
-        {
-            Text = "Auto upgrade",
-            ButtonPressed = true,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-            CustomMinimumSize = new Vector2(200.0f, 28.0f),
-        };
-        checkbox.AddThemeFontSizeOverride("font_size", 11);
-        root.AddChild(checkbox);
-
-        panel.InitializeQueuePreview(root, smithOption, checkbox);
+        panel.InitializeQueuePreview(root, smithOption);
 
         return panel;
     }
@@ -152,75 +141,6 @@ public static class RestSiteReforgeQueueUi
             .Select(static group => new QueuedCardPreview(group.Key, group.First().Title, group.Count()));
     }
 
-    public static void PrepareAutoUpgradeSelection(SmithRestSiteOption smithOption)
-    {
-        if (IsAutoUpgradeEnabled(smithOption) == false)
-        {
-            return;
-        }
-
-        if (TryGetTopQueuedCard(smithOption, out _, out var queuePath, out var cardKey) == false)
-        {
-            return;
-        }
-
-        if (string.IsNullOrEmpty(queuePath) == true)
-        {
-            return;
-        }
-
-        PendingAutoSelections[queuePath] = cardKey;
-    }
-
-    private static bool IsAutoUpgradeEnabled(SmithRestSiteOption smithOption)
-    {
-        var queuePath = GetQueuePath(smithOption);
-        return ActiveConfirmUis
-            .FirstOrDefault(ui => ui.QueuePath == queuePath)?
-            .IsAutoUpgradeEnabled == true;
-    }
-
-    private static bool TryGetTopQueuedCard(
-        SmithRestSiteOption smithOption,
-        out CardModel card,
-        out string? queuePath,
-        out string cardKey)
-    {
-        queuePath = GetQueuePath(smithOption);
-        cardKey = string.Empty;
-        card = null!;
-
-        var keys = ReforgeQueueStorage.LoadKeys(queuePath).ToArray();
-        if (keys.Length == 0)
-        {
-            return false;
-        }
-
-        if (GetOwner(smithOption) is not { } player)
-        {
-            return false;
-        }
-
-        var cards = player.Deck.Cards.ToList();
-        foreach (var key in keys)
-        {
-            var index = cards.FindIndex(item =>
-                ReforgeQueueCardRow.MatchesCardKey(item, key)
-                && item.IsUpgradable == true
-                && item.IsUpgraded == false);
-            if (index < 0)
-            {
-                continue;
-            }
-
-            card = cards[index];
-            cardKey = key;
-            return true;
-        }
-
-        return false;
-    }
-
     public static void TryInstallAutoSelector(NDeckUpgradeSelectScreen screen, IReadOnlyList<CardModel> cards)
     {
         var player = cards.FirstOrDefault()?.Owner;
@@ -230,30 +150,39 @@ public static class RestSiteReforgeQueueUi
             return;
         }
 
-        if (PendingAutoSelections.Remove(queuePath, out var cardKey) == false)
+        if (ReforgeQueueStorage.LoadAutoUpgradeEnabled(queuePath) == false)
         {
             return;
         }
 
-        var card = cards.FirstOrDefault(item =>
-            ReforgeQueueCardRow.MatchesCardKey(item, cardKey)
-            && item.IsUpgradable == true
-            && item.IsUpgraded == false);
+        var card = GetTopQueuedCardInSelection(queuePath, cards);
         if (card == null)
         {
             return;
         }
 
-        screen.AddChild(new RestSiteAutoUpgradeSelector(screen, card));
+        screen.AddChild(new UpgradeScreenAutoSelector(screen, card));
     }
 
-    private static Player? GetOwner(SmithRestSiteOption smithOption)
+    private static CardModel? GetTopQueuedCardInSelection(string? queuePath, IReadOnlyList<CardModel> cards)
     {
-        return OwnerGetter.Invoke(smithOption, null) as Player;
+        foreach (var key in ReforgeQueueStorage.LoadKeys(queuePath))
+        {
+            var card = cards.FirstOrDefault(item =>
+                ReforgeQueueCardRow.MatchesCardKey(item, key)
+                && item.IsUpgradable == true
+                && item.IsUpgraded == false);
+            if (card != null)
+            {
+                return card;
+            }
+        }
+
+        return null;
     }
 }
 
-public sealed partial class RestSiteAutoUpgradeSelector : Node
+public sealed partial class UpgradeScreenAutoSelector : Node
 {
     private static readonly MethodInfo OnCardClickedMethod = AccessTools.Method(
         typeof(NDeckUpgradeSelectScreen),
@@ -265,7 +194,7 @@ public sealed partial class RestSiteAutoUpgradeSelector : Node
     private readonly CardModel card;
     private int framesToWait = 1;
 
-    public RestSiteAutoUpgradeSelector(NDeckUpgradeSelectScreen screen, CardModel card)
+    public UpgradeScreenAutoSelector(NDeckUpgradeSelectScreen screen, CardModel card)
     {
         this.screen = screen;
         this.card = card;
@@ -442,13 +371,11 @@ public sealed partial class RestSiteReforgeQueueConfirmUi : PanelContainer
 {
     private readonly NRestSiteRoom room;
     private readonly NRestSiteButton smithButton;
-    private CheckBox? autoUpgradeCheckbox;
     private VBoxContainer? root;
     private SmithRestSiteOption? smithOption;
     private Control? queuePreview;
 
     public string? QueuePath { get; private set; }
-    public bool IsAutoUpgradeEnabled => autoUpgradeCheckbox?.ButtonPressed == true;
 
     public RestSiteReforgeQueueConfirmUi(NRestSiteRoom room, NRestSiteButton smithButton)
     {
@@ -457,9 +384,8 @@ public sealed partial class RestSiteReforgeQueueConfirmUi : PanelContainer
         ProcessMode = ProcessModeEnum.Always;
     }
 
-    public void InitializeQueuePreview(VBoxContainer previewRoot, SmithRestSiteOption option, CheckBox checkbox)
+    public void InitializeQueuePreview(VBoxContainer previewRoot, SmithRestSiteOption option)
     {
-        autoUpgradeCheckbox = checkbox;
         root = previewRoot;
         smithOption = option;
         QueuePath = RestSiteReforgeQueueUi.GetQueuePath(option);

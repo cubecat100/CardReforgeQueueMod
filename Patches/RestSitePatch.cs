@@ -1,7 +1,6 @@
 #nullable enable
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
@@ -16,15 +15,6 @@ public static class RestSitePatch
     public static void Postfix(NRestSiteRoom __instance)
     {
         RestSiteReforgeQueueUi.EnsureInstalled(__instance);
-    }
-}
-
-[HarmonyPatch(typeof(SmithRestSiteOption), "OnSelect")]
-public static class SmithRestSiteOptionPatch
-{
-    public static void Prefix(SmithRestSiteOption __instance)
-    {
-        RestSiteReforgeQueueUi.PrepareAutoUpgradeSelection(__instance);
     }
 }
 
